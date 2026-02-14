@@ -1,0 +1,10 @@
+# Stoxxo Monitor - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+requests>=2.31.0        # HTTP requests for Stoxxo API
+PyQt6>=6.6.0           # GUI framework
+PyQt6-Qt6>=6.6.0       # Qt6 binaries
+
+# Optional but recommended
+python-dateutil>=2.8.2  # Date/time parsing

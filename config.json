@@ -1,0 +1,39 @@
+{
+    "bridge_ports": [21000, 80],
+    "polling_intervals": {
+        "ultra_fast": 0.5,
+        "fast": 1.0,
+        "medium": 2.0,
+        "slow": 5.0,
+        "very_slow": 10.0
+    },
+    "default_polling_interval": 1.0,
+    "theme": "dark",
+    "window": {
+        "title": "Stoxxo User Quantity Monitoring Tool",
+        "width": 1400,
+        "height": 800,
+        "min_width": 1200,
+        "min_height": 600
+    },
+    "table": {
+        "alternating_rows": true,
+        "font_size": 10,
+        "header_font_size": 11
+    },
+    "colors": {
+        "positive_pnl": "#48bb78",
+        "negative_pnl": "#f56565",
+        "neutral": "#a0aec0",
+        "background": "#1a1f2e",
+        "surface": "#2a3544",
+        "text_primary": "#e2e8f0",
+        "text_secondary": "#cbd5e0"
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "stoxxo_monitor.log",
+        "max_bytes": 10485760,
+        "backup_count": 3
+    }
+}
