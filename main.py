@@ -1,7 +1,7 @@
 
 """
 Stoxxo User Quantity Monitoring Tool
-Main application entry point
+Main application entry point..hi
 """
 import sys
 import os
