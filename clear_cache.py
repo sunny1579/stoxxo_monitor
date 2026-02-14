@@ -1,5 +1,5 @@
 """
-Clear all Python cache files
+Clear all Python cache files.....hare krishna
 """
 import os
 import shutil
