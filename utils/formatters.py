@@ -80,6 +80,59 @@ def format_percentage(value):
         return "0.00%"
 
 
+def format_roi(value):
+    """
+    Format ROI percentage with sign
+    
+    Args:
+        value: ROI percentage value (already calculated as percentage, not decimal)
+        
+    Returns:
+        Formatted string with + or - sign and % symbol
+    """
+    try:
+        if value > 0:
+            return "+%.2f%%" % value
+        elif value < 0:
+            return "%.2f%%" % value
+        else:
+            return "0.00%"
+    except:
+        return "0.00%"
+
+
+def format_utilised_percent(value):
+    """
+    Format utilised percentage (no sign, just percentage)
+    
+    Args:
+        value: Utilised percentage value (already calculated as percentage, not decimal)
+        
+    Returns:
+        Formatted string with % symbol
+    """
+    try:
+        return "%.2f%%" % value
+    except:
+        return "0.00%"
+
+
+def format_margin(value):
+    """
+    Format margin value as currency without symbol
+    
+    Args:
+        value: Margin value
+        
+    Returns:
+        Formatted string
+    """
+    try:
+        return "%.2f" % value
+    except:
+        return "0.00"
+
+
 def get_pnl_color(value):
     """
     Get color for P&L value

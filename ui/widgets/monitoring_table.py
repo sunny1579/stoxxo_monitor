@@ -10,7 +10,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from utils.formatters import format_pnl, format_quantity, get_pnl_color, get_quantity_color
+from utils.formatters import (format_pnl, format_quantity, format_roi, format_margin,
+                              format_utilised_percent, get_pnl_color, get_quantity_color)
 
 
 class MonitoringTable(QTableWidget):
@@ -18,32 +19,49 @@ class MonitoringTable(QTableWidget):
     Table widget for displaying user quantity monitoring data
     """
     
-    # Column definitions
+    # Column definitions (in display order)
     COLUMNS = [
         "User Alias",
+        "User ID",
         "Live P&L",
+        "ROI %",
+        "Available Margin",
+        "Utilized Margin",
+        "Utilised %",
         "Call Sell Qty",
         "Call Buy Qty",
+        "Calls Net",
         "Put Sell Qty",
         "Put Buy Qty",
         "Puts Net",
-        "Calls Net",
         "Quantity Imparity"
     ]
     
     # Column indices
-    COL_USER = 0
-    COL_PNL = 1
-    COL_CALL_SELL = 2
-    COL_CALL_BUY = 3
-    COL_PUT_SELL = 4
-    COL_PUT_BUY = 5
-    COL_PUTS_NET = 6
-    COL_CALLS_NET = 7
-    COL_IMPARITY = 8
+    COL_USER_ALIAS = 0
+    COL_USER_ID = 1
+    COL_PNL = 2
+    COL_ROI = 3
+    COL_AVAILABLE_MARGIN = 4
+    COL_UTILIZED_MARGIN = 5
+    COL_UTILISED_PERCENT = 6
+    COL_CALL_SELL = 7
+    COL_CALL_BUY = 8
+    COL_CALLS_NET = 9
+    COL_PUT_SELL = 10
+    COL_PUT_BUY = 11
+    COL_PUTS_NET = 12
+    COL_IMPARITY = 13
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        
+        # P&L visibility state
+        self.pnl_hidden = False
+        
+        # Store previous data for comparison
+        self._previous_data = {}
+        
         self._setup_table()
     
     def _setup_table(self):
@@ -59,18 +77,65 @@ class MonitoringTable(QTableWidget):
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.verticalHeader().setVisible(False)
         
+        # Prevent text from spilling over - wrap within cell boundaries
+        self.setWordWrap(True)
+        
+        # SORTING DISABLED - Causes crashes with real-time updates
+        self.setSortingEnabled(False)
+        
         # Column widths
         header = self.horizontalHeader()
-        header.setSectionResizeMode(self.COL_USER, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(self.COL_PNL, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(self.COL_CALL_SELL, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(self.COL_CALL_BUY, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(self.COL_PUT_SELL, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(self.COL_PUT_BUY, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(self.COL_PUTS_NET, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(self.COL_CALLS_NET, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(self.COL_IMPARITY, QHeaderView.ResizeMode.Fixed)
-        self.setColumnWidth(self.COL_IMPARITY, 100)
+        
+        # Enable column dragging (reordering)
+        header.setSectionsMovable(True)
+        header.setDragEnabled(True)
+        header.setDragDropMode(QHeaderView.DragDropMode.InternalMove)
+        
+        # Disable sort indicators (no sorting)
+        header.setSortIndicatorShown(False)
+        
+        # Make header non-clickable for sorting
+        header.setSectionsClickable(False)
+        
+        # Enable word wrap in header as well
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+        # Note: QHeaderView doesn't have setWordWrap, so we'll use TextElideMode
+        # to truncate with ellipsis if text is too long
+        header.setTextElideMode(Qt.TextElideMode.ElideRight)
+        
+        # Configure column resize modes
+        # Use Interactive mode to allow manual resizing by dragging column edges
+        # ALL columns are now manually resizable
+        header.setSectionResizeMode(self.COL_USER_ALIAS, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_USER_ID, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_PNL, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_ROI, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_AVAILABLE_MARGIN, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_UTILIZED_MARGIN, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_UTILISED_PERCENT, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_CALL_SELL, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_CALL_BUY, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_CALLS_NET, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_PUT_SELL, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_PUT_BUY, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_PUTS_NET, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self.COL_IMPARITY, QHeaderView.ResizeMode.Interactive)
+        
+        # Set initial/default column widths (users can resize from these)
+        self.setColumnWidth(self.COL_USER_ALIAS, 150)
+        self.setColumnWidth(self.COL_USER_ID, 100)
+        self.setColumnWidth(self.COL_PNL, 120)
+        self.setColumnWidth(self.COL_ROI, 100)
+        self.setColumnWidth(self.COL_AVAILABLE_MARGIN, 150)
+        self.setColumnWidth(self.COL_UTILIZED_MARGIN, 150)
+        self.setColumnWidth(self.COL_UTILISED_PERCENT, 100)
+        self.setColumnWidth(self.COL_CALL_SELL, 120)
+        self.setColumnWidth(self.COL_CALL_BUY, 120)
+        self.setColumnWidth(self.COL_CALLS_NET, 100)
+        self.setColumnWidth(self.COL_PUT_SELL, 120)
+        self.setColumnWidth(self.COL_PUT_BUY, 120)
+        self.setColumnWidth(self.COL_PUTS_NET, 100)
+        self.setColumnWidth(self.COL_IMPARITY, 120)
         
         # Row height
         self.verticalHeader().setDefaultSectionSize(35)
@@ -78,16 +143,54 @@ class MonitoringTable(QTableWidget):
     def update_data(self, summaries):
         """
         Update table with new data
+        Preserves scroll position and only updates changed cells
         
         Args:
             summaries: List of OptionsPositionSummary objects
         """
-        # Clear existing data
-        self.setRowCount(0)
+        # Sorting is ALWAYS disabled - we only sort on manual header clicks
+        # This prevents any issues with Qt's automatic sorting
         
-        # Add rows
-        for summary in summaries:
-            self._add_row(summary)
+        # Save scroll position
+        scrollbar = self.verticalScrollBar()
+        scroll_position = scrollbar.value()
+        
+        # Build lookup by user_id for new data
+        new_data = {s.user_id: s for s in summaries}
+        
+        # Check if we need to rebuild table (different users or count)
+        need_rebuild = (
+            len(summaries) != self.rowCount() or
+            set(new_data.keys()) != set(self._previous_data.keys())
+        )
+        
+        if need_rebuild:
+            # Full rebuild needed
+            self.setRowCount(0)
+            for summary in summaries:
+                self._add_row(summary)
+        else:
+            # Update existing rows (more efficient)
+            for row in range(self.rowCount()):
+                user_alias_item = self.item(row, self.COL_USER_ALIAS)
+                if not user_alias_item:
+                    continue
+                
+                # Find matching summary by checking user_alias
+                matching_summary = None
+                for summary in summaries:
+                    if summary.user_alias == user_alias_item.text():
+                        matching_summary = summary
+                        break
+                
+                if matching_summary:
+                    self._update_row(row, matching_summary)
+        
+        # Store current data for next comparison
+        self._previous_data = new_data
+        
+        # Restore scroll position
+        scrollbar.setValue(scroll_position)
     
     def _add_row(self, summary):
         """
@@ -100,12 +203,40 @@ class MonitoringTable(QTableWidget):
         self.insertRow(row)
         
         # User Alias
-        self._set_cell(row, self.COL_USER, summary.user_alias, align_center=False)
+        self._set_cell(row, self.COL_USER_ALIAS, summary.user_alias, align_center=False)
         
-        # Live P&L (colored)
-        pnl_text = format_pnl(summary.live_pnl)
-        pnl_color = get_pnl_color(summary.live_pnl)
+        # User ID
+        self._set_cell(row, self.COL_USER_ID, summary.user_id or "Default", align_center=False)
+        
+        # Live P&L (colored) - check if hidden
+        if self.pnl_hidden:
+            pnl_text = "xxxx"
+            pnl_color = None
+        else:
+            pnl_text = format_pnl(summary.live_pnl)
+            pnl_color = get_pnl_color(summary.live_pnl)
         self._set_cell(row, self.COL_PNL, pnl_text, color=pnl_color, bold=True)
+        
+        # ROI % (colored, hidden if P&L is hidden)
+        if self.pnl_hidden:
+            roi_text = "xxxx"
+            roi_color = None
+        else:
+            roi_text = format_roi(summary.roi_percent)
+            roi_color = get_pnl_color(summary.roi_percent)  # Same color logic as P&L
+        self._set_cell(row, self.COL_ROI, roi_text, color=roi_color, bold=True)
+        
+        # Available Margin
+        margin_avail_text = format_margin(summary.available_margin)
+        self._set_cell(row, self.COL_AVAILABLE_MARGIN, margin_avail_text)
+        
+        # Utilized Margin
+        margin_util_text = format_margin(summary.utilized_margin)
+        self._set_cell(row, self.COL_UTILIZED_MARGIN, margin_util_text)
+        
+        # Utilised %
+        utilised_pct_text = format_utilised_percent(summary.utilised_percent)
+        self._set_cell(row, self.COL_UTILISED_PERCENT, utilised_pct_text)
         
         # Call Sell Qty (negative, red)
         call_sell_text = format_quantity(summary.call_sell_qty)
@@ -116,6 +247,11 @@ class MonitoringTable(QTableWidget):
         call_buy_text = format_quantity(summary.call_buy_qty)
         call_buy_color = get_quantity_color(summary.call_buy_qty)
         self._set_cell(row, self.COL_CALL_BUY, call_buy_text, color=call_buy_color)
+        
+        # Calls Net (colored by value)
+        calls_net_text = format_quantity(summary.calls_net)
+        calls_net_color = get_quantity_color(summary.calls_net)
+        self._set_cell(row, self.COL_CALLS_NET, calls_net_text, color=calls_net_color, bold=True)
         
         # Put Sell Qty (negative, red)
         put_sell_text = format_quantity(summary.put_sell_qty)
@@ -132,12 +268,104 @@ class MonitoringTable(QTableWidget):
         puts_net_color = get_quantity_color(summary.puts_net)
         self._set_cell(row, self.COL_PUTS_NET, puts_net_text, color=puts_net_color, bold=True)
         
-        # Calls Net (colored by value)
-        calls_net_text = format_quantity(summary.calls_net)
-        calls_net_color = get_quantity_color(summary.calls_net)
-        self._set_cell(row, self.COL_CALLS_NET, calls_net_text, color=calls_net_color, bold=True)
-        
         # Quantity Imparity (orb indicator)
+        self._set_imparity_cell(row, summary.imparity_status)
+    
+    def _update_row(self, row, summary):
+        """
+        Update an existing row with new data (only updates changed cells)
+        More efficient than rebuilding the entire row
+        
+        Args:
+            row: Row index
+            summary: OptionsPositionSummary object
+        """
+        # Update P&L if changed (respecting hidden state)
+        if self.pnl_hidden:
+            pnl_text = "xxxx"
+            pnl_color = None
+        else:
+            pnl_text = format_pnl(summary.live_pnl)
+            pnl_color = get_pnl_color(summary.live_pnl)
+        
+        pnl_item = self.item(row, self.COL_PNL)
+        if pnl_item and pnl_item.text() != pnl_text:
+            self._set_cell(row, self.COL_PNL, pnl_text, color=pnl_color, bold=True)
+        
+        # Update ROI % if changed (respecting hidden state)
+        if self.pnl_hidden:
+            roi_text = "xxxx"
+            roi_color = None
+        else:
+            roi_text = format_roi(summary.roi_percent)
+            roi_color = get_pnl_color(summary.roi_percent)
+        
+        roi_item = self.item(row, self.COL_ROI)
+        if roi_item and roi_item.text() != roi_text:
+            self._set_cell(row, self.COL_ROI, roi_text, color=roi_color, bold=True)
+        
+        # Update Available Margin if changed
+        margin_avail_text = format_margin(summary.available_margin)
+        margin_avail_item = self.item(row, self.COL_AVAILABLE_MARGIN)
+        if margin_avail_item and margin_avail_item.text() != margin_avail_text:
+            self._set_cell(row, self.COL_AVAILABLE_MARGIN, margin_avail_text)
+        
+        # Update Utilized Margin if changed
+        margin_util_text = format_margin(summary.utilized_margin)
+        margin_util_item = self.item(row, self.COL_UTILIZED_MARGIN)
+        if margin_util_item and margin_util_item.text() != margin_util_text:
+            self._set_cell(row, self.COL_UTILIZED_MARGIN, margin_util_text)
+        
+        # Update Utilised % if changed
+        utilised_pct_text = format_utilised_percent(summary.utilised_percent)
+        utilised_pct_item = self.item(row, self.COL_UTILISED_PERCENT)
+        if utilised_pct_item and utilised_pct_item.text() != utilised_pct_text:
+            self._set_cell(row, self.COL_UTILISED_PERCENT, utilised_pct_text)
+        
+        # Update Call Sell Qty if changed
+        call_sell_text = format_quantity(summary.call_sell_qty)
+        call_sell_item = self.item(row, self.COL_CALL_SELL)
+        if call_sell_item and call_sell_item.text() != call_sell_text:
+            call_sell_color = get_quantity_color(summary.call_sell_qty)
+            self._set_cell(row, self.COL_CALL_SELL, call_sell_text, color=call_sell_color)
+        
+        # Update Call Buy Qty if changed
+        call_buy_text = format_quantity(summary.call_buy_qty)
+        call_buy_item = self.item(row, self.COL_CALL_BUY)
+        if call_buy_item and call_buy_item.text() != call_buy_text:
+            call_buy_color = get_quantity_color(summary.call_buy_qty)
+            self._set_cell(row, self.COL_CALL_BUY, call_buy_text, color=call_buy_color)
+        
+        # Update Calls Net if changed
+        calls_net_text = format_quantity(summary.calls_net)
+        calls_net_item = self.item(row, self.COL_CALLS_NET)
+        if calls_net_item and calls_net_item.text() != calls_net_text:
+            calls_net_color = get_quantity_color(summary.calls_net)
+            self._set_cell(row, self.COL_CALLS_NET, calls_net_text, color=calls_net_color, bold=True)
+        
+        # Update Put Sell Qty if changed
+        put_sell_text = format_quantity(summary.put_sell_qty)
+        put_sell_item = self.item(row, self.COL_PUT_SELL)
+        if put_sell_item and put_sell_item.text() != put_sell_text:
+            put_sell_color = get_quantity_color(summary.put_sell_qty)
+            self._set_cell(row, self.COL_PUT_SELL, put_sell_text, color=put_sell_color)
+        
+        # Update Put Buy Qty if changed
+        put_buy_text = format_quantity(summary.put_buy_qty)
+        put_buy_item = self.item(row, self.COL_PUT_BUY)
+        if put_buy_item and put_buy_item.text() != put_buy_text:
+            put_buy_color = get_quantity_color(summary.put_buy_qty)
+            self._set_cell(row, self.COL_PUT_BUY, put_buy_text, color=put_buy_color)
+        
+        # Update Puts Net if changed
+        puts_net_text = format_quantity(summary.puts_net)
+        puts_net_item = self.item(row, self.COL_PUTS_NET)
+        if puts_net_item and puts_net_item.text() != puts_net_text:
+            puts_net_color = get_quantity_color(summary.puts_net)
+            self._set_cell(row, self.COL_PUTS_NET, puts_net_text, color=puts_net_color, bold=True)
+        
+        # Update Imparity status if needed (compare widget background color)
+        # For simplicity, always update this (it's a widget, not an item)
         self._set_imparity_cell(row, summary.imparity_status)
     
     def _set_cell(self, row, col, text, color=None, bold=False, align_center=True):
@@ -170,6 +398,20 @@ class MonitoringTable(QTableWidget):
             font.setBold(True)
             item.setFont(font)
         
+        # Store numeric value for proper sorting
+        # Try to convert to float for numeric columns
+        try:
+            # Remove formatting characters like +, -, %, commas
+            clean_text = str(text).replace('+', '').replace('%', '').replace(',', '')
+            numeric_value = float(clean_text)
+            item.setData(Qt.ItemDataRole.UserRole, numeric_value)
+        except (ValueError, AttributeError):
+            # Not a number, store as string for alphabetical sorting
+            item.setData(Qt.ItemDataRole.UserRole, str(text))
+        
+        # Prevent text overflow - will show ellipsis (...) if too long
+        # This works in conjunction with setWordWrap for best results
+        
         self.setItem(row, col, item)
     
     def _set_imparity_cell(self, row, status):
@@ -180,7 +422,7 @@ class MonitoringTable(QTableWidget):
             row: Row index
             status: 'green' or 'red'
         """
-        # Create widget for cell
+        # Create widget for visual display
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -189,10 +431,10 @@ class MonitoringTable(QTableWidget):
         # Create orb label
         orb = QLabel()
         if status == 'green':
-            orb.setText("  ")  # Green circle (using Unicode)
+            orb.setText("  ")  # Empty text, just the colored circle
             orb.setStyleSheet("background-color: #48bb78; border-radius: 10px; min-width: 20px; min-height: 20px;")
         else:
-            orb.setText("  ")  # Red circle
+            orb.setText("  ")  # Empty text, just the colored circle
             orb.setStyleSheet("background-color: #f56565; border-radius: 10px; min-width: 20px; min-height: 20px;")
         
         layout.addWidget(orb)

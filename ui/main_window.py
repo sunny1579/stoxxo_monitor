@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ui.widgets import MonitoringTable, EngineButton, MonitorStatusBar
 from ui.polling_service import PollingService
 from core.stoxxo_client import StoxxoClient
+from utils.settings_manager import SettingsManager
 
 
 class MainWindow(QMainWindow):
@@ -28,6 +29,9 @@ class MainWindow(QMainWindow):
         
         self.logger = logging.getLogger(__name__)
         
+        # Settings manager
+        self.settings_manager = SettingsManager()
+        
         # Stoxxo client
         self.client = None
         
@@ -37,11 +41,14 @@ class MainWindow(QMainWindow):
         # Current data storage (for P&L toggle)
         self._current_summaries = []
         
-        # Current font size
-        self.current_font_size = 11
+        # Current font size (will be loaded from settings)
+        self.current_font_size = self.settings_manager.get_font_size()
         
         # Setup UI
         self._init_ui()
+        
+        # Load saved settings
+        self._load_settings()
         
         # Initialize Stoxxo connection
         self._init_stoxxo()
@@ -114,7 +121,7 @@ class MainWindow(QMainWindow):
         self.font_decrease_btn.clicked.connect(self._on_font_decrease)
         layout.addWidget(self.font_decrease_btn)
         
-        self.font_size_label = QLabel("11")
+        self.font_size_label = QLabel(str(self.current_font_size))  # Use loaded value
         self.font_size_label.setFixedWidth(25)
         self.font_size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.font_size_label)
@@ -157,10 +164,29 @@ class MainWindow(QMainWindow):
         self.last_update_label.setObjectName("statusLabel")
         layout.addWidget(self.last_update_label)
         
+        layout.addSpacing(15)
+        
+        # Reset to Defaults button
+        self.reset_btn = QPushButton("Reset Defaults")
+        self.reset_btn.setFixedSize(120, 35)
+        self.reset_btn.clicked.connect(self._on_reset_defaults)
+        layout.addWidget(self.reset_btn)
+        
         # Push everything to the left
         layout.addStretch()
         
         return top_bar
+    
+    def _connect_settings_signals(self):
+        """Connect signals to save settings immediately when changed"""
+        # Save column order when moved
+        header = self.table.horizontalHeader()
+        header.sectionMoved.connect(self._on_column_moved)
+        
+        # Save column width when resized
+        header.sectionResized.connect(self._on_column_resized)
+        
+        # Sort signal NOT connected - sorting is disabled
     
     def _init_stoxxo(self):
         """Initialize Stoxxo client and polling service"""
@@ -189,6 +215,52 @@ class MainWindow(QMainWindow):
             self.logger.error("Failed to initialize Stoxxo: %s", str(e))
             self.status_bar.set_connection_status(False)
             # Don't show error dialog on startup
+    
+    def _load_settings(self):
+        """Load saved settings and apply them"""
+        self.logger.info("Loading saved settings...")
+        
+        # Restore window geometry
+        self.settings_manager.restore_window_geometry(self)
+        
+        # Restore font size (just load the value, apply later)
+        saved_font_size = self.settings_manager.get_font_size()
+        self.current_font_size = saved_font_size
+        
+        # Restore polling interval
+        saved_interval = self.settings_manager.get_polling_interval()
+        # Find matching index in combo box
+        for i in range(self.interval_combo.count()):
+            if abs(self.interval_combo.itemData(i) - saved_interval) < 0.01:
+                self.interval_combo.setCurrentIndex(i)
+                break
+        
+        # Restore P&L visibility state
+        pnl_hidden = self.settings_manager.get_pnl_hidden()
+        if pnl_hidden:
+            self.pnl_toggle_btn.setChecked(True)
+            self.pnl_toggle_btn.setText("Show P&L")
+            self.table.pnl_hidden = True
+        
+        # Restore table settings
+        header = self.table.horizontalHeader()
+        
+        # Restore column order
+        self.settings_manager.restore_column_order(header)
+        
+        # Restore column widths
+        self.settings_manager.restore_column_widths(header)
+        
+        # Sort state NOT restored - sorting is disabled
+        
+        # NOW apply the font after everything is set up
+        # Use QTimer to ensure table is fully rendered before applying font
+        QTimer.singleShot(100, self._update_table_font)
+        
+        # Connect signals to save settings immediately on changes
+        self._connect_settings_signals()
+        
+        self.logger.info("Settings loaded successfully")
     
     def _on_engine_started(self):
         """Handle ENGINE START"""
@@ -264,6 +336,9 @@ class MainWindow(QMainWindow):
         # Refresh table with current data
         if hasattr(self, '_current_summaries'):
             self.table.update_data(self._current_summaries)
+        
+        # Save settings
+        self.settings_manager.save_pnl_hidden(is_hidden)
     
     def _on_font_increase(self):
         """Increase table font size"""
@@ -296,6 +371,21 @@ class MainWindow(QMainWindow):
         # Adjust row height based on font size
         row_height = int(self.current_font_size * 3.5)
         self.table.verticalHeader().setDefaultSectionSize(row_height)
+        
+        # Force update all existing items to use new font
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item:
+                    item_font = item.font()
+                    item_font.setPointSize(self.current_font_size)
+                    item.setFont(item_font)
+        
+        # Force table to repaint
+        self.table.viewport().update()
+        
+        # Save settings
+        self.settings_manager.save_font_size(self.current_font_size)
         
         self.logger.info("Font size changed to %d", self.current_font_size)
     
@@ -332,6 +422,9 @@ class MainWindow(QMainWindow):
             self.poller.set_interval(interval)
             self.status_bar.set_refresh_status(True, interval)
             self.logger.info("Poll interval changed to %.1fs", interval)
+        
+        # Save settings
+        self.settings_manager.save_polling_interval(interval)
     
     def _show_connection_error(self):
         """Show connection error dialog"""
@@ -345,16 +438,99 @@ class MainWindow(QMainWindow):
             "You can update network settings if needed."
         )
     
+    def _on_column_moved(self, logical_index, old_visual_index, new_visual_index):
+        """Save settings when column is moved"""
+        header = self.table.horizontalHeader()
+        self.settings_manager.save_column_order(header)
+        self.logger.debug(f"Column moved - settings saved")
+    
+    def _on_column_resized(self, logical_index, old_size, new_size):
+        """Save settings when column is resized"""
+        header = self.table.horizontalHeader()
+        self.settings_manager.save_column_widths(header)
+        self.logger.debug(f"Column resized - settings saved")
+    
+    def _on_sort_changed(self, logical_index, order):
+        """Save settings when sort changes"""
+        self.settings_manager.save_sort_state(logical_index, order)
+        self.logger.debug(f"Sort changed - settings saved")
+    
+    def _on_reset_defaults(self):
+        """Reset all settings to defaults"""
+        # Confirm with user
+        reply = QMessageBox.question(
+            self,
+            "Reset to Defaults",
+            "Are you sure you want to reset all settings to defaults?\n\n"
+            "This will reset:\n"
+            "• Window size and position\n"
+            "• Column order and widths\n"
+            "• Font size\n"
+            "• Polling interval\n"
+            "• Sort preferences\n\n"
+            "The application will restart after reset.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.logger.info("Resetting all settings to defaults...")
+            self.settings_manager.reset_to_defaults()
+            
+            # Show message and restart
+            QMessageBox.information(
+                self,
+                "Reset Complete",
+                "Settings have been reset to defaults.\n\n"
+                "Please restart the application for changes to take effect."
+            )
+            
+            # Close application
+            self.close()
+    
     def closeEvent(self, event):
         """Handle window close event"""
+        self.logger.info("Application closing - saving settings...")
+        
+        # Save all settings
+        self._save_settings()
+        
         # Stop polling if running
         if self.poller and self.poller.isRunning():
-            self.logger.info("Stopping polling service before exit...")
+            self.logger.info("Stopping polling service...")
             self.poller.stop()
             self.poller.wait()
         
-        self.logger.info("Application closing")
+        self.logger.info("Application closed")
         event.accept()
+    
+    def _save_settings(self):
+        """Save all current settings"""
+        # Save window geometry
+        self.settings_manager.save_window_geometry(self)
+        
+        # Save font size
+        self.settings_manager.save_font_size(self.current_font_size)
+        
+        # Save polling interval
+        current_interval = self.interval_combo.currentData()
+        self.settings_manager.save_polling_interval(current_interval)
+        
+        # Save P&L visibility state
+        self.settings_manager.save_pnl_hidden(self.pnl_toggle_btn.isChecked())
+        
+        # Save table settings
+        header = self.table.horizontalHeader()
+        
+        # Save column order
+        self.settings_manager.save_column_order(header)
+        
+        # Save column widths
+        self.settings_manager.save_column_widths(header)
+        
+        # Sort state NOT saved - sorting is disabled
+        
+        self.logger.info("All settings saved")
 
 
 if __name__ == "__main__":

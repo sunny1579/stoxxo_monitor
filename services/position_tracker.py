@@ -23,6 +23,11 @@ class OptionsPositionTracker:
     def __init__(self, stoxxo_client):
         self.client = stoxxo_client
         self.logger = logging.getLogger(__name__)
+        
+        # Performance optimization: Cache previous data to detect changes
+        self._last_users_data = {}
+        self._last_positions_data = {}
+        self._cached_summaries = {}
     
     def get_user_summary(self, user_id=""):
         """
@@ -125,27 +130,176 @@ class OptionsPositionTracker:
     def get_all_users_summary(self):
         """
         Get summary for all active users
+        OPTIMIZED: Fetches all positions in one batch call + smart caching
         
         Returns:
             List of OptionsPositionSummary objects
         """
         try:
-            # Get all users from Stoxxo
+            # Get all users from Stoxxo (single API call)
             users = self.client.system_info.get_users()
+            
+            # Get ALL positions at once (single API call for all users)
+            all_positions = self.client.system_info.get_positions()  # No user_id = all positions
+            
+            # Build position lookup by user_id for fast access
+            positions_by_user = {}
+            for pos in all_positions:
+                user_id = pos.get('user_id', '')
+                if user_id not in positions_by_user:
+                    positions_by_user[user_id] = []
+                positions_by_user[user_id].append(pos)
             
             summaries = []
             for user in users:
                 # Only process enabled and logged-in users
                 if user['enabled'] and user['logged_in']:
                     user_id = user['user_id']
-                    summary = self.get_user_summary(user_id)
-                    summaries.append(summary)
+                    
+                    # Get positions for this user from our lookup
+                    user_positions = positions_by_user.get(user_id, [])
+                    
+                    # Check if data changed for this user (smart caching)
+                    user_data_hash = self._hash_user_data(user, user_positions)
+                    
+                    if user_id in self._cached_summaries and user_data_hash == self._last_users_data.get(user_id):
+                        # Data hasn't changed, use cached summary
+                        # But update the timestamp
+                        cached = self._cached_summaries[user_id]
+                        cached.last_updated = datetime.now()
+                        summaries.append(cached)
+                    else:
+                        # Data changed or new user, recalculate
+                        summary = self._create_summary_from_data(user, user_positions)
+                        summaries.append(summary)
+                        
+                        # Update cache
+                        self._cached_summaries[user_id] = summary
+                        self._last_users_data[user_id] = user_data_hash
             
             return summaries
             
         except Exception as e:
             self.logger.error("Error getting all users summary: %s", e)
             return []
+    
+    def _hash_user_data(self, user_data, positions):
+        """
+        Create a simple hash of user data + positions to detect changes
+        
+        Args:
+            user_data: User dictionary
+            positions: List of positions
+            
+        Returns:
+            Hash string
+        """
+        # Create a simple hash from key values
+        # We only care about values that affect display
+        hash_parts = [
+            str(user_data.get('mtm', 0)),
+            str(user_data.get('available_margin', 0)),
+            str(user_data.get('utilized_margin', 0)),
+            str(len(positions))
+        ]
+        
+        # Add position quantities
+        for pos in positions:
+            hash_parts.append("%s:%d" % (pos.get('symbol', ''), pos.get('net_qty', 0)))
+        
+        return '|'.join(hash_parts)
+    
+    def _create_summary_from_data(self, user_data, positions):
+        """
+        Create summary from already-fetched data (no additional API calls)
+        OPTIMIZED: Pre-compute symbol checks, avoid repeated string operations
+        
+        Args:
+            user_data: User dictionary from get_users()
+            positions: List of position dictionaries for this user
+            
+        Returns:
+            OptionsPositionSummary object
+        """
+        try:
+            # Aggregate positions
+            call_sell_qty = 0
+            call_buy_qty = 0
+            put_sell_qty = 0
+            put_buy_qty = 0
+            
+            for pos in positions:
+                net_qty = pos['net_qty']
+                
+                # Skip closed positions (net_qty = 0) early
+                if net_qty == 0:
+                    continue
+                
+                # Get symbol once, convert to uppercase once
+                symbol = pos['symbol'].upper()
+                
+                # Pre-compute option type checks (more efficient than repeated 'in' checks)
+                is_call = 'CE' in symbol
+                is_put = 'PE' in symbol
+                
+                # Skip non-options early
+                if not (is_call or is_put):
+                    continue
+                
+                # Use simple comparison instead of if-else cascade
+                if is_call:
+                    if net_qty > 0:
+                        call_buy_qty += net_qty
+                    else:
+                        call_sell_qty += net_qty
+                else:  # Must be put
+                    if net_qty > 0:
+                        put_buy_qty += net_qty
+                    else:
+                        put_sell_qty += net_qty
+            
+            # Calculate net positions
+            puts_net = put_sell_qty + put_buy_qty
+            calls_net = call_sell_qty + call_buy_qty
+            
+            # Determine imparity status (simple boolean check)
+            imparity = 'green' if (puts_net == 0 and calls_net == 0) else 'red'
+            
+            # Create summary
+            return OptionsPositionSummary(
+                user_id=user_data.get('user_id', ''),
+                user_alias=user_data.get('user_alias', user_data.get('user_id', 'Default')),
+                live_pnl=user_data.get('mtm', 0.0),
+                available_margin=user_data.get('available_margin', 0.0),
+                utilized_margin=user_data.get('utilized_margin', 0.0),
+                call_sell_qty=call_sell_qty,
+                call_buy_qty=call_buy_qty,
+                put_sell_qty=put_sell_qty,
+                put_buy_qty=put_buy_qty,
+                puts_net=puts_net,
+                calls_net=calls_net,
+                imparity_status=imparity,
+                last_updated=datetime.now()
+            )
+            
+        except Exception as e:
+            self.logger.error("Error creating summary: %s", e)
+            # Return empty summary on error
+            return OptionsPositionSummary(
+                user_id=user_data.get('user_id', ''),
+                user_alias=user_data.get('user_alias', 'Unknown'),
+                live_pnl=0.0,
+                available_margin=0.0,
+                utilized_margin=0.0,
+                call_sell_qty=0,
+                call_buy_qty=0,
+                put_sell_qty=0,
+                put_buy_qty=0,
+                puts_net=0,
+                calls_net=0,
+                imparity_status='green',
+                last_updated=datetime.now()
+            )
     
     def is_option_symbol(self, symbol):
         """
@@ -163,6 +317,16 @@ class OptionsPositionTracker:
         is_option = is_call or is_put
         
         return (is_option, is_call, is_put)
+    
+    def clear_cache(self):
+        """
+        Clear all cached data
+        Useful for forcing a full recalculation
+        """
+        self._last_users_data.clear()
+        self._last_positions_data.clear()
+        self._cached_summaries.clear()
+        self.logger.info("Position tracker cache cleared")
 
 
 if __name__ == "__main__":

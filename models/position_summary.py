@@ -56,6 +56,14 @@ class OptionsPositionSummary:
             return (self.live_pnl * 100) / total_margin
         return 0.0
     
+    @property
+    def utilised_percent(self) -> float:
+        """Calculate utilised margin percentage"""
+        total_margin = self.available_margin + self.utilized_margin
+        if total_margin > 0:
+            return (self.utilized_margin * 100) / total_margin
+        return 0.0
+    
     def __str__(self):
         return f"{self.user_alias}: P&L={self.live_pnl}, " \
                f"ROI={self.roi_percent:.2f}%, " \
