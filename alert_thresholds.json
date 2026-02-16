@@ -1,0 +1,248 @@
+{
+  "mtm_roi": {
+    "Simulated1": {
+      "mtm_above": "",
+      "mtm_below": "-100",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "WISDOM_SHANU": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "WISDOM_ANGAD_PR": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "FLAT_NUNU": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "FLAT_SUNITA": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "FLAT_CP": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "FLAT_JHONNY": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "FLAT_SUNNY": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "FLAT_ZISHAN": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "WISDOM_PAPPA": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "VIRANCHI_KOTAK": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "NANDAN_PR_KOTAK": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "MONISH_KOTAK": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "JK_KOTAK_V3": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "RKJ34_WISDOM": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    },
+    "ADNAN_KOTAK": {
+      "mtm_above": "",
+      "mtm_below": "",
+      "roi_above": "",
+      "roi_below": ""
+    }
+  },
+  "margin": {
+    "Simulated1": "0.01",
+    "WISDOM_SHANU": "",
+    "WISDOM_ANGAD_PR": "",
+    "FLAT_NUNU": "",
+    "FLAT_SUNITA": "",
+    "FLAT_CP": "",
+    "FLAT_JHONNY": "",
+    "FLAT_SUNNY": "",
+    "FLAT_ZISHAN": "",
+    "WISDOM_PAPPA": "",
+    "VIRANCHI_KOTAK": "",
+    "NANDAN_PR_KOTAK": "",
+    "MONISH_KOTAK": "",
+    "JK_KOTAK_V3": "",
+    "RKJ34_WISDOM": "",
+    "ADNAN_KOTAK": ""
+  },
+  "quantity": {
+    "Simulated1": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "WISDOM_SHANU": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "WISDOM_ANGAD_PR": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "FLAT_NUNU": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "FLAT_SUNITA": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "FLAT_CP": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "FLAT_JHONNY": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "FLAT_SUNNY": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "FLAT_ZISHAN": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "WISDOM_PAPPA": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "VIRANCHI_KOTAK": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "NANDAN_PR_KOTAK": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "MONISH_KOTAK": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "JK_KOTAK_V3": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "RKJ34_WISDOM": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    },
+    "ADNAN_KOTAK": {
+      "calls_sell": "",
+      "puts_sell": "",
+      "calls_buy": "",
+      "puts_buy": "",
+      "calls_net": "",
+      "puts_net": ""
+    }
+  }
+}

@@ -2,7 +2,7 @@
 Main Application Window
 """
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                              QLabel, QComboBox, QPushButton, QMessageBox)
+                              QLabel, QComboBox, QPushButton, QMessageBox, QTabWidget)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from datetime import datetime
@@ -12,10 +12,12 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ui.widgets import MonitoringTable, EngineButton, MonitorStatusBar
+from ui.widgets import EngineButton, MonitorStatusBar
 from ui.polling_service import PollingService
 from core.stoxxo_client import StoxxoClient
 from utils.settings_manager import SettingsManager
+from ui.tabs import MonitoringTab, AlertsTab
+from services.alert_service import AlertService
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +40,9 @@ class MainWindow(QMainWindow):
         # Polling service
         self.poller = None
         
+        # Alert service
+        self.alert_service = None
+        
         # Current data storage (for P&L toggle)
         self._current_summaries = []
         
@@ -57,8 +62,6 @@ class MainWindow(QMainWindow):
         """Initialize user interface"""
         self.setWindowTitle("Stoxxo User Quantity Monitoring Tool")
         self.setGeometry(100, 100, 1400, 800)
-        # Remove minimum size restriction for full flexibility
-        # self.setMinimumSize(1200, 600)  # Commented out
         
         # Central widget
         central_widget = QWidget()
@@ -73,9 +76,22 @@ class MainWindow(QMainWindow):
         top_bar = self._create_top_bar()
         main_layout.addWidget(top_bar)
         
-        # Monitoring table
-        self.table = MonitoringTable()
-        main_layout.addWidget(self.table)
+        # Tab widget
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setObjectName("mainTabs")
+        
+        # Create tabs
+        self.monitoring_tab = MonitoringTab()
+        self.alerts_tab = AlertsTab(self.settings_manager)
+        
+        # Add tabs
+        self.tab_widget.addTab(self.monitoring_tab, "Monitoring")
+        self.tab_widget.addTab(self.alerts_tab, "Alerts")
+        
+        # Get reference to table from monitoring tab
+        self.table = self.monitoring_tab.get_table()
+        
+        main_layout.addWidget(self.tab_widget)
         
         # Status bar
         self.status_bar = MonitorStatusBar()
@@ -211,6 +227,11 @@ class MainWindow(QMainWindow):
             self.poller.connection_status_changed.connect(self._on_connection_changed)
             self.poller.error_occurred.connect(self._on_error)
             
+            # Create alert service
+            self.alert_service = AlertService()
+            self.alert_service.alert_sent.connect(self._on_alert_sent)
+            self.alert_service.error_occurred.connect(self._on_alert_error)
+            
         except Exception as e:
             self.logger.error("Failed to initialize Stoxxo: %s", str(e))
             self.status_bar.set_connection_status(False)
@@ -288,6 +309,18 @@ class MainWindow(QMainWindow):
         else:
             self.logger.error("Polling service not initialized")
             self.engine_btn.stop()
+            return
+        
+        # Start alert service
+        if self.alert_service:
+            # Update config from alerts tab
+            self._update_alert_service_config()
+            
+            # Start alert service
+            self.alert_service.start()
+            self.logger.info("Alert service started")
+        else:
+            self.logger.error("Alert service not initialized")
     
     def _on_engine_stopped(self):
         """Handle ENGINE STOP"""
@@ -301,6 +334,12 @@ class MainWindow(QMainWindow):
             self.status_bar.set_refresh_status(False)
             
             self.logger.info("Polling service stopped")
+        
+        # Stop alert service
+        if self.alert_service and self.alert_service.isRunning():
+            self.alert_service.stop()
+            self.alert_service.wait()  # Wait for thread to finish
+            self.logger.info("Alert service stopped")
     
     def _on_data_updated(self, summaries):
         """
@@ -312,8 +351,21 @@ class MainWindow(QMainWindow):
         # Store summaries for P&L toggle
         self._current_summaries = summaries
         
-        # Update table
+        # Update monitoring table
         self.table.update_data(summaries)
+        
+        # Update alerts tab with current user list
+        user_aliases = [summary.user_alias for summary in summaries]
+        self.alerts_tab.update_users(user_aliases)
+        
+        # Update alert service config AFTER users are populated
+        # This ensures thresholds from all widgets are captured
+        if self.alert_service and self.alert_service.isRunning():
+            self._update_alert_service_config()
+        
+        # Update alert service with position data
+        if self.alert_service and self.alert_service.isRunning():
+            self.alert_service.update_position_data(summaries)
         
         # Update status bar
         now = datetime.now()
@@ -531,6 +583,70 @@ class MainWindow(QMainWindow):
         # Sort state NOT saved - sorting is disabled
         
         self.logger.info("All settings saved")
+    
+    def _update_alert_service_config(self):
+        """Update alert service configuration from alerts tab"""
+        if not self.alert_service:
+            return
+        
+        # Get Telegram config
+        tg = self.alerts_tab.get_telegram_config()
+        telegram_config = {
+            'bot_token': tg.get_bot_token(),
+            'channel_id': tg.get_channel_id(),
+            'sound_enabled': tg.get_sound_enabled()
+        }
+        
+        # Get grid log config
+        grid = self.alerts_tab.get_grid_alerts()
+        grid_config = {
+            'enabled': grid.is_enabled(),
+            'attention': grid.is_attention_enabled(),
+            'error': grid.is_error_enabled(),
+            'warning': grid.is_warning_enabled(),
+            'filter_enabled': grid.is_filter_enabled(),
+            'filter_keywords': grid.get_filter_keywords()
+        }
+        
+        # Get MTM/ROI config
+        mtm_roi = self.alerts_tab.get_mtm_roi_alerts()
+        mtm_roi_config = {
+            'enabled': mtm_roi.is_enabled(),
+            'thresholds': mtm_roi.get_all_thresholds()
+        }
+        
+        # Get margin config
+        margin = self.alerts_tab.get_margin_alerts()
+        margin_config = {
+            'enabled': margin.is_enabled(),
+            'thresholds': margin.get_all_thresholds()
+        }
+        
+        # Get quantity config
+        quantity = self.alerts_tab.get_quantity_alerts()
+        quantity_config = {
+            'enabled': quantity.is_enabled(),
+            'thresholds': quantity.get_all_thresholds()
+        }
+        
+        # Update alert service
+        self.alert_service.update_config(
+            telegram_config,
+            grid_config,
+            mtm_roi_config,
+            margin_config,
+            quantity_config
+        )
+        
+        self.logger.info("Alert service configuration updated")
+    
+    def _on_alert_sent(self, alert_type, message):
+        """Handle alert sent notification"""
+        self.logger.info(f"Alert sent: {alert_type}")
+    
+    def _on_alert_error(self, error_msg):
+        """Handle alert service error"""
+        self.logger.error(f"Alert service error: {error_msg}")
 
 
 if __name__ == "__main__":
