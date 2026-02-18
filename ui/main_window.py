@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         
         # Current data storage (for P&L toggle)
         self._current_summaries = []
+        self._last_user_aliases = []  # Track user list to avoid redundant config updates
         
         # Current font size (will be loaded from settings)
         self.current_font_size = self.settings_manager.get_font_size()
@@ -356,15 +357,19 @@ class MainWindow(QMainWindow):
         
         # Update alerts tab with current user list
         user_aliases = [summary.user_alias for summary in summaries]
+        
+        # Only rebuild alert tables when user list changes
+        user_list_changed = user_aliases != self._last_user_aliases
         self.alerts_tab.update_users(user_aliases)
         
-        # Update alert service config AFTER users are populated
-        # This ensures thresholds from all widgets are captured
         if self.alert_service and self.alert_service.isRunning():
+            if user_list_changed:
+                self._last_user_aliases = user_aliases
+            
+            # Always update config so Telegram credentials + thresholds stay in sync
             self._update_alert_service_config()
-        
-        # Update alert service with position data
-        if self.alert_service and self.alert_service.isRunning():
+            
+            # Always update position data
             self.alert_service.update_position_data(summaries)
         
         # Update status bar

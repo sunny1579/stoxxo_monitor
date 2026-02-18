@@ -328,7 +328,6 @@ class SettingsManager:
         
         # Save thresholds to JSON file
         self._save_thresholds('mtm_roi', thresholds)
-        print(f"DEBUG: Saved MTM/ROI to file: {len(thresholds)} users")  # DEBUG
         self.logger.debug(f"MTM/ROI config saved for {len(thresholds)} users")
     
     def get_mtm_roi_config(self):
@@ -338,7 +337,6 @@ class SettingsManager:
         
         # Load thresholds from JSON file
         thresholds = self._load_thresholds('mtm_roi')
-        print(f"DEBUG: Loaded MTM/ROI from file: {len(thresholds)} users")  # DEBUG
         
         return enabled, thresholds
     
@@ -351,29 +349,23 @@ class SettingsManager:
             thresholds: Dict of thresholds
         """
         try:
-            print(f"DEBUG: Saving to file: {self.thresholds_file_path}")  # DEBUG
             
             # Load existing data
             all_thresholds = {}
             if os.path.exists(self.thresholds_file_path):
                 with open(self.thresholds_file_path, 'r') as f:
                     all_thresholds = json.load(f)
-                print(f"DEBUG: Loaded existing data: {list(all_thresholds.keys())}")  # DEBUG
-            else:
-                print(f"DEBUG: File doesn't exist yet, creating new")  # DEBUG
+            # else: file doesnt exist, all_thresholds stays empty dict
             
             # Update this alert type
             all_thresholds[alert_type] = thresholds
-            print(f"DEBUG: Updated {alert_type} with {len(thresholds)} users")  # DEBUG
             
             # Save back to file
             with open(self.thresholds_file_path, 'w') as f:
                 json.dump(all_thresholds, f, indent=2)
             
-            print(f"DEBUG: File saved successfully")  # DEBUG
             self.logger.debug(f"Thresholds saved to {self.thresholds_file_path}")
         except Exception as e:
-            print(f"DEBUG: ERROR saving: {e}")  # DEBUG
             self.logger.error(f"Error saving thresholds: {e}")
     
     def _load_thresholds(self, alert_type):
@@ -387,23 +379,17 @@ class SettingsManager:
             Dict of thresholds
         """
         try:
-            print(f"DEBUG: Loading from file: {self.thresholds_file_path}")  # DEBUG
-            print(f"DEBUG: File exists? {os.path.exists(self.thresholds_file_path)}")  # DEBUG
             
             if not os.path.exists(self.thresholds_file_path):
-                print(f"DEBUG: File not found, returning empty dict")  # DEBUG
                 return {}
             
             with open(self.thresholds_file_path, 'r') as f:
                 all_thresholds = json.load(f)
             
-            print(f"DEBUG: Loaded data keys: {list(all_thresholds.keys())}")  # DEBUG
             result = all_thresholds.get(alert_type, {})
-            print(f"DEBUG: Returning {alert_type}: {len(result)} users")  # DEBUG
             
             return result
         except Exception as e:
-            print(f"DEBUG: ERROR loading: {e}")  # DEBUG
             self.logger.error(f"Error loading thresholds: {e}")
             return {}
     

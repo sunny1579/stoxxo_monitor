@@ -2,8 +2,8 @@
   "mtm_roi": {
     "Simulated1": {
       "mtm_above": "",
-      "mtm_below": "-100",
-      "roi_above": "",
+      "mtm_below": "",
+      "roi_above": "1",
       "roi_below": ""
     },
     "WISDOM_SHANU": {
@@ -121,8 +121,8 @@
       "puts_sell": "",
       "calls_buy": "",
       "puts_buy": "",
-      "calls_net": "",
-      "puts_net": ""
+      "calls_net": "1",
+      "puts_net": "1"
     },
     "WISDOM_SHANU": {
       "calls_sell": "",

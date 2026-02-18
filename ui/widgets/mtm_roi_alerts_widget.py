@@ -252,7 +252,6 @@ class MTMROIAlertsWidget(QGroupBox):
             user_alias: User alias string
             thresholds: Dict with keys: mtm_above, mtm_below, roi_above, roi_below
         """
-        print(f"DEBUG MTM Widget: set_user_thresholds called for {user_alias}: {thresholds}")  # DEBUG
         
         # Find row for this user
         found = False
@@ -260,7 +259,6 @@ class MTMROIAlertsWidget(QGroupBox):
             alias_item = self.table.item(row, 0)
             if alias_item and alias_item.text() == user_alias:
                 found = True
-                print(f"DEBUG MTM Widget: Found {user_alias} at row {row}")  # DEBUG
                 
                 # BLOCK SIGNALS while setting all values to prevent intermediate saves
                 mtm_above = self.table.cellWidget(row, 1)
@@ -282,22 +280,18 @@ class MTMROIAlertsWidget(QGroupBox):
                 if mtm_above:
                     value = str(thresholds.get('mtm_above', ''))
                     mtm_above.setText(value)
-                    print(f"DEBUG MTM Widget: Set mtm_above = {value}")  # DEBUG
                 
                 if mtm_below:
                     value = str(thresholds.get('mtm_below', ''))
                     mtm_below.setText(value)
-                    print(f"DEBUG MTM Widget: Set mtm_below = {value}")  # DEBUG
                 
                 if roi_above:
                     value = str(thresholds.get('roi_above', ''))
                     roi_above.setText(value)
-                    print(f"DEBUG MTM Widget: Set roi_above = {value}")  # DEBUG
                 
                 if roi_below:
                     value = str(thresholds.get('roi_below', ''))
                     roi_below.setText(value)
-                    print(f"DEBUG MTM Widget: Set roi_below = {value}")  # DEBUG
                 
                 # Unblock all widgets
                 if mtm_above:
@@ -311,9 +305,6 @@ class MTMROIAlertsWidget(QGroupBox):
                 
                 break
         
-        if not found:
-            print(f"DEBUG MTM Widget: User {user_alias} NOT FOUND in table!")  # DEBUG
-    
     def is_enabled(self):
         """Check if MTM/ROI alerts are enabled"""
         return self.enable_checkbox.isChecked()

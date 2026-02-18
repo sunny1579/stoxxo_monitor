@@ -367,42 +367,26 @@ class AlertsTab(QWidget):
     
     def _reload_thresholds_for_users(self):
         """Reload saved thresholds after user list updates"""
-        print(f"DEBUG: _reload_thresholds_for_users called for users: {self._current_user_list}")  # DEBUG
         
         # MTM/ROI alerts
         enabled, thresholds = self.settings_manager.get_mtm_roi_config()
-        print(f"DEBUG: Loading MTM/ROI thresholds: {thresholds}")  # DEBUG
-        
-        if not thresholds:
-            print("DEBUG: No thresholds loaded from settings!")  # DEBUG
         
         for user_alias, user_thresholds in thresholds.items():
             if user_alias in self._current_user_list:
-                print(f"DEBUG: Applying {user_alias}: {user_thresholds}")  # DEBUG
                 self.mtm_roi_alerts.set_user_thresholds(user_alias, user_thresholds)
-            else:
-                print(f"DEBUG: Skipping {user_alias} - not in current user list")  # DEBUG
-        
+
         # Margin alerts
         enabled, thresholds = self.settings_manager.get_margin_config()
-        print(f"DEBUG: Margin thresholds loaded: {thresholds}")  # DEBUG
         for user_alias, threshold in thresholds.items():
             if user_alias in self._current_user_list:
-                print(f"DEBUG: Applying margin for {user_alias}: {threshold}")  # DEBUG
                 self.margin_alerts.set_user_threshold(user_alias, threshold)
-            else:
-                print(f"DEBUG: Skipping margin {user_alias} - not in list")  # DEBUG
-        
+
         # Quantity alerts
         enabled, thresholds = self.settings_manager.get_quantity_config()
-        print(f"DEBUG: Quantity thresholds loaded: {len(thresholds)} users")  # DEBUG
         for user_alias, user_thresholds in thresholds.items():
             if user_alias in self._current_user_list:
-                print(f"DEBUG: Applying quantity for {user_alias}: {user_thresholds}")  # DEBUG
                 self.quantity_alerts.set_user_thresholds(user_alias, user_thresholds)
-            else:
-                print(f"DEBUG: Skipping quantity {user_alias} - not in list")  # DEBUG
-    
+
     def _load_settings(self):
         """Load all alert settings from SettingsManager"""
         # Block signals to prevent triggering saves during load
@@ -477,7 +461,6 @@ class AlertsTab(QWidget):
         
         # MTM/ROI alerts
         mtm_thresholds = self.mtm_roi_alerts.get_all_thresholds()
-        print(f"DEBUG: Saving MTM/ROI thresholds: {mtm_thresholds}")  # DEBUG
         self.settings_manager.save_mtm_roi_config(
             self.mtm_roi_alerts.is_enabled(),
             mtm_thresholds

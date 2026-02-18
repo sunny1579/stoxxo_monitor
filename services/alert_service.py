@@ -64,7 +64,7 @@ class AlertService(QThread):
         self._current_summaries: List[OptionsPositionSummary] = []
         
         # Polling interval
-        self.check_interval = 0.5  # seconds
+        self.check_interval = 2.0  # seconds
     
     def update_config(self, 
                      telegram_config: dict,
@@ -82,11 +82,28 @@ class AlertService(QThread):
             margin_config: {enabled, thresholds}
             quantity_config: {enabled, thresholds}
         """
-        # Telegram
-        self.bot_token = telegram_config.get('bot_token', '')
-        self.channel_id = telegram_config.get('channel_id', '')
+        # Telegram — detect if credentials changed so we can reinitialize client
+        new_bot_token = telegram_config.get('bot_token', '')
+        new_channel_id = telegram_config.get('channel_id', '')
+        credentials_changed = (new_bot_token != self.bot_token or 
+                               new_channel_id != self.channel_id)
+        
+        self.bot_token = new_bot_token
+        self.channel_id = new_channel_id
         self.sound_enabled = telegram_config.get('sound_enabled', True)
         self.telegram_enabled = bool(self.bot_token and self.channel_id)
+        
+        # If the service is running and credentials changed, reinitialize telegram client
+        if self.is_running and credentials_changed:
+            if self.telegram_client:
+                self.telegram_client.close()
+                self.telegram_client = None
+            if self.telegram_enabled:
+                try:
+                    self.telegram_client = TelegramClientSync(self.bot_token, self.channel_id)
+                    self.logger.info("Telegram client re-initialized with new credentials")
+                except Exception as e:
+                    self.logger.error(f"Failed to re-initialize Telegram client: {e}")
         
         # Grid log
         self.grid_log_enabled = grid_config.get('enabled', False)
@@ -198,8 +215,27 @@ class AlertService(QThread):
     
     def _check_grid_log_alerts(self):
         """Check for grid log errors and send alerts"""
+        
+        # Guard: telegram client must exist
+        if not self.telegram_client:
+            if self.telegram_enabled:
+                try:
+                    self.telegram_client = TelegramClientSync(self.bot_token, self.channel_id)
+                    self.logger.info("Telegram client initialized (lazy)")
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize Telegram client: {e}")
+                    return
+            else:
+                return
+        
+        # Initialize grid log monitor lazily if not yet created
         if not self.grid_log_monitor:
-            return
+            try:
+                self.grid_log_monitor = GridLogMonitor()
+                self.logger.info("Grid log monitor initialized (lazy)")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize grid log monitor: {e}")
+                return
         
         try:
             # Build enabled types list
@@ -211,33 +247,43 @@ class AlertService(QThread):
             if self.grid_warning_enabled:
                 enabled_types.append('WARNING')
             
+            
             if not enabled_types:
                 return
             
             # Get filter keywords
             filter_keywords = self.grid_filter_keywords if self.grid_filter_enabled else []
             
+            # Build user_id -> alias lookup from current position summaries
+            user_alias_map = {
+                s.user_id: s.user_alias
+                for s in self._current_summaries
+                if hasattr(s, 'user_id') and s.user_id
+            }
+
             # Check for new entries
             alerts = self.grid_log_monitor.check_for_new_entries(enabled_types, filter_keywords)
-            
+
             # Send each alert
             for alert in alerts:
-                alert_type, timestamp, user, strategy_tag, portfolio_name, issue = alert
-                message = self.grid_log_monitor.format_alert_message(
-                    alert_type, timestamp, user, strategy_tag, portfolio_name, issue
+                alert_type, timestamp, message, user_id, strategy_tag, portfolio_name = alert
+                user_alias = user_alias_map.get(user_id, '')
+                telegram_msg = self.grid_log_monitor.format_alert_message(
+                    alert_type, timestamp, message, user_id, user_alias, strategy_tag, portfolio_name
                 )
                 
                 # Send to Telegram
-                success = self.telegram_client.send_message(message)
+                success = self.telegram_client.send_message(telegram_msg)
                 
                 if success:
-                    self.alert_sent.emit('grid_log', message)
+                    self.alert_sent.emit('grid_log', telegram_msg)
                     self.logger.info(f"Grid log alert sent: {alert_type}")
                     
                     # Play sound if enabled
                     if self.sound_enabled:
                         self._play_alert_sound()
-        
+                else:
+                    pass
         except Exception as e:
             self.logger.error(f"Error checking grid log: {e}")
     
@@ -246,12 +292,19 @@ class AlertService(QThread):
         if not self.alert_checker or not self._current_summaries:
             return
         
+        # Guard: telegram client must exist
+        if not self.telegram_client:
+            if self.telegram_enabled:
+                try:
+                    self.telegram_client = TelegramClientSync(self.bot_token, self.channel_id)
+                    self.logger.info("Telegram client initialized (lazy)")
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize Telegram client: {e}")
+                    return
+            else:
+                return
+        
         try:
-            print(f"DEBUG AlertService: Checking alerts for {len(self._current_summaries)} users")  # DEBUG
-            print(f"DEBUG AlertService: MTM enabled: {self.mtm_roi_enabled}, thresholds: {len(self.mtm_roi_thresholds)}")  # DEBUG
-            print(f"DEBUG AlertService: Margin enabled: {self.margin_enabled}, thresholds: {len(self.margin_thresholds)}")  # DEBUG
-            print(f"DEBUG AlertService: Quantity enabled: {self.quantity_enabled}, thresholds: {len(self.quantity_thresholds)}")  # DEBUG
-            
             # Check all alerts
             alerts = self.alert_checker.check_all_alerts(
                 self._current_summaries,
@@ -260,12 +313,12 @@ class AlertService(QThread):
                 self.quantity_thresholds if self.quantity_enabled else {}
             )
             
-            print(f"DEBUG AlertService: {len(alerts)} alerts detected")  # DEBUG
+            if alerts:
+                self.logger.info(f"Position alerts detected: {len(alerts)}")
             
             # Send each alert
             for alert in alerts:
                 message = alert.format_message()
-                print(f"DEBUG AlertService: Sending alert: {alert.alert_type} for {alert.user_alias}")  # DEBUG
                 
                 # Send to Telegram
                 success = self.telegram_client.send_message(message)
@@ -278,11 +331,9 @@ class AlertService(QThread):
                     if self.sound_enabled:
                         self._play_alert_sound()
                 else:
-                    print(f"DEBUG AlertService: Failed to send alert")  # DEBUG
-        
+                    self.logger.warning(f"Failed to send alert: {alert.alert_type} for {alert.user_alias}")
         except Exception as e:
             self.logger.error(f"Error checking position alerts: {e}")
-            print(f"DEBUG AlertService: Exception: {e}")  # DEBUG
     
     def _play_alert_sound(self):
         """Play alert sound (if enabled)"""

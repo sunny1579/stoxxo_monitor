@@ -22,27 +22,41 @@ class AlertEvent:
     
     def format_message(self) -> str:
         """Format alert as Telegram message"""
-        emoji_map = {
-            'mtm_above': '📈',
-            'mtm_below': '📉',
-            'roi_above': '🟢',
-            'roi_below': '🔴',
-            'margin_above': '⚠️',
-            'calls_sell': '📞',
-            'puts_sell': '📞',
-            'calls_buy': '📞',
-            'puts_buy': '📞',
-            'calls_net': '📊',
-            'puts_net': '📊'
-        }
-        emoji = emoji_map.get(self.alert_type, '🔔')
-        
-        message = f"{emoji} ALERT: {self.user_alias}\n"
-        message += f"Metric: {self.metric_name}\n"
-        message += f"Threshold: {self.threshold}\n"
-        message += f"Actual: {self.actual_value}"
-        
-        return message
+        # Category emojis and labels
+        if 'mtm' in self.alert_type or 'roi' in self.alert_type:
+            category_emoji = '📈'
+            category = 'MTM ALERT' if 'mtm' in self.alert_type else 'ROI ALERT'
+        elif 'margin' in self.alert_type:
+            category_emoji = '⚠️'
+            category = 'MARGIN ALERT'
+        else:
+            category_emoji = '📊'
+            category = 'QUANTITY ALERT'
+
+        # Format values based on type
+        if 'margin' in self.alert_type:
+            threshold_str = f"{self.threshold:.1f}%"
+            actual_str    = f"{self.actual_value:.1f}%"
+        elif 'roi' in self.alert_type:
+            threshold_str = f"{self.threshold:.2f}%"
+            actual_str    = f"{self.actual_value:.2f}%"
+        elif any(x in self.alert_type for x in ['calls', 'puts']):
+            threshold_str = f"{int(self.threshold)}"
+            actual_str    = f"{int(self.actual_value)}"
+        else:
+            # MTM — Indian Rupee, comma-formatted
+            threshold_str = f"₹{self.threshold:,.2f}"
+            actual_str    = f"₹{self.actual_value:,.2f}"
+
+        lines = [
+            f"{category_emoji} {category}",
+            f"User Alias: {self.user_alias}",
+            f"Metric: {self.metric_name}",
+            f"Threshold: {threshold_str}",
+            f"Actual: {actual_str}",
+        ]
+
+        return "\n".join(lines)
 
 
 class AlertChecker:
