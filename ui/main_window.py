@@ -2,7 +2,7 @@
 Main Application Window
 """
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                              QLabel, QComboBox, QPushButton, QMessageBox, QTabWidget)
+                              QLabel, QComboBox, QPushButton, QMessageBox, QTabWidget, QFrame)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from datetime import datetime
@@ -91,7 +91,64 @@ class MainWindow(QMainWindow):
         
         # Get reference to table from monitoring tab
         self.table = self.monitoring_tab.get_table()
-        
+
+        # ── Total P&L / ROI ticker — centered in tab strip ──────────────
+        # We place a full-width container on the TopRightCorner that uses
+        # internal stretch to visually center the ticker content.
+        ticker_container = QWidget()
+        ticker_container.setObjectName("tickerContainer")
+        ticker_container_layout = QHBoxLayout(ticker_container)
+        ticker_container_layout.setContentsMargins(0, 0, 16, 0)
+        ticker_container_layout.setSpacing(0)
+        ticker_container_layout.addStretch()
+
+        self.ticker_widget = QFrame()
+        self.ticker_widget.setObjectName("tickerWidget")
+        ticker_layout = QHBoxLayout(self.ticker_widget)
+        ticker_layout.setContentsMargins(20, 3, 20, 3)
+        ticker_layout.setSpacing(24)
+
+        # Total P&L
+        pnl_wrap = QWidget()
+        pnl_wrap_layout = QHBoxLayout(pnl_wrap)
+        pnl_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        pnl_wrap_layout.setSpacing(8)
+        pnl_caption = QLabel("Total P&L")
+        pnl_caption.setObjectName("tickerCaption")
+        self.ticker_pnl = QLabel("—")
+        self.ticker_pnl.setObjectName("tickerValue")
+        self.ticker_pnl.setMinimumWidth(130)
+        pnl_wrap_layout.addWidget(pnl_caption)
+        pnl_wrap_layout.addWidget(self.ticker_pnl)
+
+        # Divider
+        divider = QLabel("│")
+        divider.setObjectName("tickerDivider")
+
+        # Total ROI
+        roi_wrap = QWidget()
+        roi_wrap_layout = QHBoxLayout(roi_wrap)
+        roi_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        roi_wrap_layout.setSpacing(8)
+        roi_caption = QLabel("Total ROI")
+        roi_caption.setObjectName("tickerCaption")
+        self.ticker_roi = QLabel("—")
+        self.ticker_roi.setObjectName("tickerValue")
+        self.ticker_roi.setMinimumWidth(90)
+        roi_wrap_layout.addWidget(roi_caption)
+        roi_wrap_layout.addWidget(self.ticker_roi)
+
+        ticker_layout.addWidget(pnl_wrap)
+        ticker_layout.addWidget(divider)
+        ticker_layout.addWidget(roi_wrap)
+
+        ticker_container_layout.addWidget(self.ticker_widget)
+        ticker_container_layout.addStretch()
+
+        self.tab_widget.setCornerWidget(
+            ticker_container, Qt.Corner.TopRightCorner
+        )
+
         main_layout.addWidget(self.tab_widget)
         
         # Status bar
@@ -150,9 +207,9 @@ class MainWindow(QMainWindow):
         
         layout.addSpacing(15)
         
-        # P&L toggle button
-        self.pnl_toggle_btn = QPushButton("Hide P&L")
-        self.pnl_toggle_btn.setFixedSize(100, 35)
+        # P&L + user alias toggle button
+        self.pnl_toggle_btn = QPushButton("Hide Users && P&L")
+        self.pnl_toggle_btn.setFixedSize(140, 35)
         self.pnl_toggle_btn.setCheckable(True)
         self.pnl_toggle_btn.setChecked(False)
         self.pnl_toggle_btn.clicked.connect(self._on_pnl_toggle)
@@ -232,6 +289,9 @@ class MainWindow(QMainWindow):
             self.alert_service = AlertService()
             self.alert_service.alert_sent.connect(self._on_alert_sent)
             self.alert_service.error_occurred.connect(self._on_alert_error)
+
+            # Update alert service config whenever user changes any alert setting
+            self.alerts_tab.config_changed.connect(self._update_alert_service_config)
             
         except Exception as e:
             self.logger.error("Failed to initialize Stoxxo: %s", str(e))
@@ -261,8 +321,13 @@ class MainWindow(QMainWindow):
         pnl_hidden = self.settings_manager.get_pnl_hidden()
         if pnl_hidden:
             self.pnl_toggle_btn.setChecked(True)
-            self.pnl_toggle_btn.setText("Show P&L")
+            self.pnl_toggle_btn.setText("Show Users && P&L")
             self.table.pnl_hidden = True
+            self.ticker_pnl.setText("****")
+            self.ticker_pnl.setStyleSheet("color: #4a5068; font-weight: bold;")
+            self.ticker_roi.setText("****")
+            self.ticker_roi.setStyleSheet("color: #4a5068; font-weight: bold;")
+            self.alerts_tab.set_aliases_hidden(True)
         
         # Restore table settings
         header = self.table.horizontalHeader()
@@ -316,10 +381,13 @@ class MainWindow(QMainWindow):
         if self.alert_service:
             # Update config from alerts tab
             self._update_alert_service_config()
-            
+
             # Start alert service
             self.alert_service.start()
             self.logger.info("Alert service started")
+
+            # Silently verify Telegram credentials and update the indicator
+            self.alerts_tab.verify_telegram_silent()
         else:
             self.logger.error("Alert service not initialized")
     
@@ -351,9 +419,12 @@ class MainWindow(QMainWindow):
         """
         # Store summaries for P&L toggle
         self._current_summaries = summaries
-        
+
         # Update monitoring table
         self.table.update_data(summaries)
+
+        # Update ticker (exclude simulated/test users by user_id)
+        self._update_ticker(summaries)
         
         # Update alerts tab with current user list
         user_aliases = [summary.user_alias for summary in summaries]
@@ -365,11 +436,11 @@ class MainWindow(QMainWindow):
         if self.alert_service and self.alert_service.isRunning():
             if user_list_changed:
                 self._last_user_aliases = user_aliases
-            
-            # Always update config so Telegram credentials + thresholds stay in sync
-            self._update_alert_service_config()
-            
-            # Always update position data
+                # Push fresh config now that user tables are populated with real users
+                # This ensures MTM/Margin/Quantity thresholds are active immediately
+                self._update_alert_service_config()
+
+            # Always pass fresh position data
             self.alert_service.update_position_data(summaries)
         
         # Update status bar
@@ -379,23 +450,84 @@ class MainWindow(QMainWindow):
         
         self.logger.debug("Data updated: %d users", len(summaries))
     
-    def _on_pnl_toggle(self):
-        """Handle P&L visibility toggle"""
-        is_hidden = self.pnl_toggle_btn.isChecked()
-        
-        if is_hidden:
-            self.pnl_toggle_btn.setText("Show P&L")
-            self.table.pnl_hidden = True
+    def _update_ticker(self, summaries):
+        """
+        Update the Total P&L / Total ROI ticker in the tab strip corner.
+        Excludes users whose user_id is 'SIM1' (simulated/test accounts).
+        Skips update entirely when pnl_hidden so **** stays visible.
+        """
+        if self.table.pnl_hidden:
+            return  # keep **** displayed, don't overwrite with real values
+        real = [s for s in summaries if (s.user_id or '').upper() != 'SIM1']
+
+        if not real:
+            self.ticker_pnl.setText("—")
+            self.ticker_roi.setText("—")
+            return
+
+        total_pnl       = sum(s.live_pnl for s in real)
+        total_available = sum(s.available_margin for s in real)
+        total_utilized  = sum(s.utilized_margin for s in real)
+        total_margin    = total_available + total_utilized
+
+        # Format P&L
+        if total_pnl >= 0:
+            pnl_str = f"+₹{total_pnl:,.2f}"
+            pnl_color = "#00e676"   # green
         else:
-            self.pnl_toggle_btn.setText("Hide P&L")
-            self.table.pnl_hidden = False
-        
-        # Refresh table with current data
-        if hasattr(self, '_current_summaries'):
-            self.table.update_data(self._current_summaries)
-        
-        # Save settings
-        self.settings_manager.save_pnl_hidden(is_hidden)
+            pnl_str = f"-₹{abs(total_pnl):,.2f}"
+            pnl_color = "#ff5252"   # red
+
+        # Format ROI
+        if total_margin > 0:
+            roi = (total_pnl * 100) / total_margin
+            sign = "+" if roi >= 0 else ""
+            roi_str = f"{sign}{roi:.4f}%"
+            roi_color = "#00e676" if roi >= 0 else "#ff5252"
+        else:
+            roi_str = "—"
+            roi_color = "#9e9e9e"
+
+        self.ticker_pnl.setText(pnl_str)
+        self.ticker_pnl.setStyleSheet(f"color: {pnl_color}; font-weight: bold;")
+        self.ticker_roi.setText(roi_str)
+        self.ticker_roi.setStyleSheet(f"color: {roi_color}; font-weight: bold;")
+
+    def _on_pnl_toggle(self):
+        """Handle P&L + user alias visibility toggle"""
+        try:
+            is_hidden = self.pnl_toggle_btn.isChecked()
+
+            if is_hidden:
+                self.pnl_toggle_btn.setText("Show Users && P&L")
+                self.table.pnl_hidden = True
+                # Replace ticker values with **** — keep container visible
+                self.ticker_pnl.setText("****")
+                self.ticker_pnl.setStyleSheet("color: #4a5068; font-weight: bold;")
+                self.ticker_roi.setText("****")
+                self.ticker_roi.setStyleSheet("color: #4a5068; font-weight: bold;")
+            else:
+                self.pnl_toggle_btn.setText("Hide Users && P&L")
+                self.table.pnl_hidden = False
+                # Restore real values from current summaries
+                if hasattr(self, '_current_summaries'):
+                    self._update_ticker(self._current_summaries)
+
+            # Hide/show user aliases in alert tab widgets
+            try:
+                self.alerts_tab.set_aliases_hidden(is_hidden)
+            except Exception as e:
+                self.logger.error(f"set_aliases_hidden failed: {e}", exc_info=True)
+
+            # Refresh table with current data
+            if hasattr(self, '_current_summaries'):
+                self.table.update_data(self._current_summaries)
+
+            # Save settings
+            self.settings_manager.save_pnl_hidden(is_hidden)
+
+        except Exception as e:
+            self.logger.error(f"_on_pnl_toggle crashed: {e}", exc_info=True)
     
     def _on_font_increase(self):
         """Increase table font size"""
@@ -444,7 +576,7 @@ class MainWindow(QMainWindow):
         # Save settings
         self.settings_manager.save_font_size(self.current_font_size)
         
-        self.logger.info("Font size changed to %d", self.current_font_size)
+        self.logger.debug("Font size changed to %d", self.current_font_size)
     
     def _on_connection_changed(self, is_connected):
         """
@@ -456,7 +588,7 @@ class MainWindow(QMainWindow):
         if is_connected:
             port = self.client.working_port or 21000
             self.status_bar.set_connection_status(True, port)
-            self.logger.info("Connection restored")
+            self.logger.debug("Connection restored")
         else:
             self.status_bar.set_connection_status(False)
             self.logger.warning("Connection lost")
@@ -643,11 +775,11 @@ class MainWindow(QMainWindow):
             quantity_config
         )
         
-        self.logger.info("Alert service configuration updated")
+        self.logger.debug("Alert service configuration updated")
     
     def _on_alert_sent(self, alert_type, message):
         """Handle alert sent notification"""
-        self.logger.info(f"Alert sent: {alert_type}")
+        self.logger.debug(f"Alert sent: {alert_type}")
     
     def _on_alert_error(self, error_msg):
         """Handle alert service error"""

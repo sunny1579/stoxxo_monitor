@@ -46,7 +46,7 @@ class PollingService(QThread):
             seconds: Polling interval in seconds (0.5, 1, 2, 5, 10)
         """
         self.interval_seconds = max(0.5, seconds)  # Minimum 0.5 seconds
-        self.logger.info("Polling interval set to %.1f seconds", self.interval_seconds)
+        self.logger.debug("Polling interval set to %.1f seconds", self.interval_seconds)
     
     def stop(self):
         """Stop the polling service"""
@@ -58,7 +58,7 @@ class PollingService(QThread):
         """
         Main polling loop (runs in separate thread)
         """
-        self.logger.info("Polling service started")
+        self.logger.debug("Polling service started")
         self.is_running = True
         self._should_stop = False
         
@@ -85,7 +85,7 @@ class PollingService(QThread):
             # Wait for next interval
             time.sleep(self.interval_seconds)
         
-        self.logger.info("Polling service stopped")
+        self.logger.debug("Polling service stopped")
         self.is_running = False
     
     def _check_connection(self):
@@ -104,7 +104,7 @@ class PollingService(QThread):
                 self._last_connection_status = is_connected
                 
                 if is_connected:
-                    self.logger.info("Connected to Stoxxo Bridge")
+                    self.logger.debug("Connected to Stoxxo Bridge")
                 else:
                     self.logger.warning("Disconnected from Stoxxo Bridge")
             

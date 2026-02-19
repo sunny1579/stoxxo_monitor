@@ -19,7 +19,28 @@ class AlertEvent:
     threshold: float
     actual_value: float
     timestamp: float
-    
+
+    def _format_percent(self, value: float) -> str:
+        """
+        Format a percentage with enough decimal places to always show
+        at least 2 significant figures.
+        0.04  -> "0.04%"   (not "0.0%")
+        0.1   -> "0.10%"
+        1.5   -> "1.5%"
+        85.0  -> "85.0%"
+        """
+        if value == 0:
+            return "0.0%"
+        abs_val = abs(value)
+        if abs_val < 0.1:
+            return f"{value:.4f}%"
+        elif abs_val < 1:
+            return f"{value:.3f}%"
+        elif abs_val < 10:
+            return f"{value:.2f}%"
+        else:
+            return f"{value:.1f}%"
+
     def format_message(self) -> str:
         """Format alert as Telegram message"""
         # Category emojis and labels
@@ -35,8 +56,8 @@ class AlertEvent:
 
         # Format values based on type
         if 'margin' in self.alert_type:
-            threshold_str = f"{self.threshold:.1f}%"
-            actual_str    = f"{self.actual_value:.1f}%"
+            threshold_str = self._format_percent(self.threshold)
+            actual_str    = self._format_percent(self.actual_value)
         elif 'roi' in self.alert_type:
             threshold_str = f"{self.threshold:.2f}%"
             actual_str    = f"{self.actual_value:.2f}%"
@@ -135,10 +156,12 @@ class AlertChecker:
         
         mtm = summary.live_pnl
         
-        # Calculate ROI%
-        # ROI% = (live_pnl / utilized_margin) * 100
-        if summary.utilized_margin > 0:
-            roi_percent = (mtm / summary.utilized_margin) * 100
+        # Calculate ROI% — must match the UI display formula:
+        # ROI% = (live_pnl / total_margin) * 100
+        # where total_margin = available_margin + utilized_margin
+        total_margin = summary.available_margin + summary.utilized_margin
+        if total_margin > 0:
+            roi_percent = (mtm / total_margin) * 100
         else:
             roi_percent = 0
         
@@ -350,7 +373,7 @@ class AlertChecker:
     def clear_cooldowns(self, user_alias: Optional[str] = None):
         """
         Clear cooldown tracking
-        
+
         Args:
             user_alias: Specific user to clear, or None for all users
         """
@@ -361,6 +384,71 @@ class AlertChecker:
         else:
             self._cooldowns.clear()
             self.logger.info("Cleared all cooldowns")
+
+    def clear_cooldowns_for_threshold_changes(self,
+                                               old_mtm_roi:   dict,
+                                               new_mtm_roi:   dict,
+                                               old_margin:    dict,
+                                               new_margin:    dict,
+                                               old_quantity:  dict,
+                                               new_quantity:  dict):
+        """
+        Compare old vs new threshold dicts and clear cooldown for any
+        user+alert_type where the threshold value actually changed.
+
+        This means: if the user edits a threshold box, the 5-minute wait
+        resets immediately for that specific alert type — so if the condition
+        is still met under the new threshold, an alert fires right away.
+
+        Mapping from threshold field names to alert_type keys used in _cooldowns:
+          mtm_roi:  mtm_above, mtm_below, roi_above, roi_below
+          margin:   margin
+          quantity: calls_net, puts_net, calls_sell, puts_sell (etc.)
+        """
+        cleared = []
+
+        # ── MTM / ROI ────────────────────────────────────────────────────
+        all_users = set(old_mtm_roi) | set(new_mtm_roi)
+        for user in all_users:
+            old_t = old_mtm_roi.get(user, {})
+            new_t = new_mtm_roi.get(user, {})
+            for field in ('mtm_above', 'mtm_below', 'roi_above', 'roi_below'):
+                if old_t.get(field) != new_t.get(field):
+                    self._clear_one(user, field)
+                    cleared.append(f"{user}/{field}")
+
+        # ── Margin ───────────────────────────────────────────────────────
+        all_users = set(old_margin) | set(new_margin)
+        for user in all_users:
+            if old_margin.get(user) != new_margin.get(user):
+                self._clear_one(user, 'margin')
+                cleared.append(f"{user}/margin")
+
+        # ── Quantity ─────────────────────────────────────────────────────
+        all_users = set(old_quantity) | set(new_quantity)
+        for user in all_users:
+            old_t = old_quantity.get(user, {})
+            new_t = new_quantity.get(user, {})
+            # quantity alert_types follow the same key names as threshold fields
+            for field in set(old_t) | set(new_t):
+                if old_t.get(field) != new_t.get(field):
+                    self._clear_one(user, field)
+                    cleared.append(f"{user}/{field}")
+
+        if cleared:
+            # Only log entries where a cooldown was actually active
+            # (avoids startup spam when old thresholds are all empty)
+            actually_reset = [
+                c for c in cleared
+                if c.split('/')[0] in self._cooldowns
+            ]
+            if actually_reset:
+                self.logger.info(f"Cooldowns reset due to threshold edit: {', '.join(actually_reset)}")
+
+    def _clear_one(self, user_alias: str, alert_type: str):
+        """Clear cooldown for a single user+alert_type pair."""
+        if user_alias in self._cooldowns:
+            self._cooldowns[user_alias].pop(alert_type, None)
     
     def get_cooldown_status(self, user_alias: str) -> Dict[str, float]:
         """

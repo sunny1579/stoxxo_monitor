@@ -125,12 +125,12 @@ class SettingsManager:
         """Save table font size"""
         self.settings.setValue(self.KEY_FONT_SIZE, size)
         self.settings.sync()  # Force immediate write to disk
-        self.logger.info(f"Font size saved: {size} (saved to {self.settings.fileName()})")
+        self.logger.debug(f"Font size saved: {size}")
     
     def get_font_size(self):
         """Get saved font size"""
         size = self.settings.value(self.KEY_FONT_SIZE, self.DEFAULT_FONT_SIZE, type=int)
-        self.logger.info(f"Font size loaded: {size}")
+        self.logger.debug(f"Font size loaded: {size}")
         return size
     
     def save_polling_interval(self, interval):

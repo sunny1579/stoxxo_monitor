@@ -362,3 +362,34 @@ QSplitter::handle:pressed {
 }
 
 
+
+/* ── Total P&L / ROI Ticker ───────────────────────────────────────────── */
+QWidget#tickerContainer {
+    background: transparent;
+}
+
+QFrame#tickerWidget {
+    background-color: #12151c;
+    border: 1px solid #1e3050;
+    border-radius: 7px;
+    margin: 2px 0px;
+}
+
+QLabel#tickerCaption {
+    color: #6a8aaa;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+QLabel#tickerValue {
+    font-size: 14px;
+    font-weight: bold;
+    font-family: "Courier New", monospace;
+}
+
+QLabel#tickerDivider {
+    color: #1e3050;
+    font-size: 20px;
+    font-weight: normal;
+}

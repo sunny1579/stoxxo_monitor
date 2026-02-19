@@ -157,12 +157,19 @@ class MonitoringTable(QTableWidget):
         
         # Build lookup by user_id for new data
         new_data = {s.user_id: s for s in summaries}
-        
-        # Check if we need to rebuild table (different users or count)
+
+        # Check if we need to rebuild table (different users, count, or hidden state changed)
         need_rebuild = (
             len(summaries) != self.rowCount() or
             set(new_data.keys()) != set(self._previous_data.keys())
         )
+
+        # Also force rebuild when pnl_hidden changed since last draw
+        if not hasattr(self, '_last_pnl_hidden'):
+            self._last_pnl_hidden = self.pnl_hidden
+        if self._last_pnl_hidden != self.pnl_hidden:
+            need_rebuild = True
+            self._last_pnl_hidden = self.pnl_hidden
         
         if need_rebuild:
             # Full rebuild needed
@@ -170,21 +177,11 @@ class MonitoringTable(QTableWidget):
             for summary in summaries:
                 self._add_row(summary)
         else:
-            # Update existing rows (more efficient)
+            # Update by position — order is stable; rebuild is triggered
+            # whenever the user set changes, so row N always == summaries[N].
             for row in range(self.rowCount()):
-                user_alias_item = self.item(row, self.COL_USER_ALIAS)
-                if not user_alias_item:
-                    continue
-                
-                # Find matching summary by checking user_alias
-                matching_summary = None
-                for summary in summaries:
-                    if summary.user_alias == user_alias_item.text():
-                        matching_summary = summary
-                        break
-                
-                if matching_summary:
-                    self._update_row(row, matching_summary)
+                if row < len(summaries):
+                    self._update_row(row, summaries[row])
         
         # Store current data for next comparison
         self._previous_data = new_data
@@ -202,11 +199,13 @@ class MonitoringTable(QTableWidget):
         row = self.rowCount()
         self.insertRow(row)
         
-        # User Alias
-        self._set_cell(row, self.COL_USER_ALIAS, summary.user_alias, align_center=False)
-        
-        # User ID
-        self._set_cell(row, self.COL_USER_ID, summary.user_id or "Default", align_center=False)
+        # User Alias (masked when hidden)
+        alias_text = "●●●●●" if self.pnl_hidden else summary.user_alias
+        self._set_cell(row, self.COL_USER_ALIAS, alias_text, align_center=False)
+
+        # User ID (masked when hidden)
+        uid_text = "●●●●" if self.pnl_hidden else (summary.user_id or "Default")
+        self._set_cell(row, self.COL_USER_ID, uid_text, align_center=False)
         
         # Live P&L (colored) - check if hidden
         if self.pnl_hidden:
@@ -275,11 +274,21 @@ class MonitoringTable(QTableWidget):
         """
         Update an existing row with new data (only updates changed cells)
         More efficient than rebuilding the entire row
-        
+
         Args:
             row: Row index
             summary: OptionsPositionSummary object
         """
+        # Update user alias and user ID (respecting hidden state)
+        alias_text = "●●●●●" if self.pnl_hidden else summary.user_alias
+        uid_text   = "●●●●"  if self.pnl_hidden else (summary.user_id or "Default")
+        alias_item = self.item(row, self.COL_USER_ALIAS)
+        uid_item   = self.item(row, self.COL_USER_ID)
+        if alias_item and alias_item.text() != alias_text:
+            self._set_cell(row, self.COL_USER_ALIAS, alias_text, align_center=False)
+        if uid_item and uid_item.text() != uid_text:
+            self._set_cell(row, self.COL_USER_ID, uid_text, align_center=False)
+
         # Update P&L if changed (respecting hidden state)
         if self.pnl_hidden:
             pnl_text = "xxxx"

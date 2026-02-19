@@ -115,17 +115,32 @@ class AlertService(QThread):
         
         # MTM/ROI
         self.mtm_roi_enabled = mtm_roi_config.get('enabled', False)
-        self.mtm_roi_thresholds = mtm_roi_config.get('thresholds', {})
-        
+        new_mtm_roi   = mtm_roi_config.get('thresholds', {})
+        new_margin    = margin_config.get('thresholds', {})
+        new_quantity  = quantity_config.get('thresholds', {})
+
+        # Clear cooldowns for any threshold that was edited before overwriting
+        if self.alert_checker:
+            self.alert_checker.clear_cooldowns_for_threshold_changes(
+                old_mtm_roi  = self.mtm_roi_thresholds,
+                new_mtm_roi  = new_mtm_roi,
+                old_margin   = self.margin_thresholds,
+                new_margin   = new_margin,
+                old_quantity = self.quantity_thresholds,
+                new_quantity = new_quantity,
+            )
+
+        self.mtm_roi_thresholds  = new_mtm_roi
+
         # Margin
-        self.margin_enabled = margin_config.get('enabled', False)
-        self.margin_thresholds = margin_config.get('thresholds', {})
-        
+        self.margin_enabled      = margin_config.get('enabled', False)
+        self.margin_thresholds   = new_margin
+
         # Quantity
-        self.quantity_enabled = quantity_config.get('enabled', False)
-        self.quantity_thresholds = quantity_config.get('thresholds', {})
+        self.quantity_enabled    = quantity_config.get('enabled', False)
+        self.quantity_thresholds = new_quantity
         
-        self.logger.info("Alert service configuration updated")
+        self.logger.debug("Alert service configuration updated")
     
     def update_position_data(self, summaries: List[OptionsPositionSummary]):
         """
@@ -221,7 +236,7 @@ class AlertService(QThread):
             if self.telegram_enabled:
                 try:
                     self.telegram_client = TelegramClientSync(self.bot_token, self.channel_id)
-                    self.logger.info("Telegram client initialized (lazy)")
+                    self.logger.debug("Telegram client initialized (lazy)")
                 except Exception as e:
                     self.logger.error(f"Failed to initialize Telegram client: {e}")
                     return
@@ -232,7 +247,7 @@ class AlertService(QThread):
         if not self.grid_log_monitor:
             try:
                 self.grid_log_monitor = GridLogMonitor()
-                self.logger.info("Grid log monitor initialized (lazy)")
+                self.logger.debug("Grid log monitor initialized (lazy)")
             except Exception as e:
                 self.logger.error(f"Failed to initialize grid log monitor: {e}")
                 return
@@ -271,13 +286,17 @@ class AlertService(QThread):
                 telegram_msg = self.grid_log_monitor.format_alert_message(
                     alert_type, timestamp, message, user_id, user_alias, strategy_tag, portfolio_name
                 )
-                
-                # Send to Telegram
-                success = self.telegram_client.send_message(telegram_msg)
+
+                # ERROR → urgent (rare, critical, send immediately)
+                # ATTENTION/WARNING → buffered (fire in bursts, deduplicate)
+                if alert_type == 'ERROR':
+                    success = self.telegram_client.send_urgent(telegram_msg)
+                else:
+                    success = self.telegram_client.send_message(telegram_msg)
                 
                 if success:
                     self.alert_sent.emit('grid_log', telegram_msg)
-                    self.logger.info(f"Grid log alert sent: {alert_type}")
+                    self.logger.debug(f"Grid log alert sent: {alert_type}")
                     
                     # Play sound if enabled
                     if self.sound_enabled:
@@ -297,7 +316,7 @@ class AlertService(QThread):
             if self.telegram_enabled:
                 try:
                     self.telegram_client = TelegramClientSync(self.bot_token, self.channel_id)
-                    self.logger.info("Telegram client initialized (lazy)")
+                    self.logger.debug("Telegram client initialized (lazy)")
                 except Exception as e:
                     self.logger.error(f"Failed to initialize Telegram client: {e}")
                     return
@@ -314,18 +333,22 @@ class AlertService(QThread):
             )
             
             if alerts:
-                self.logger.info(f"Position alerts detected: {len(alerts)}")
+                self.logger.debug(f"Position alerts detected: {len(alerts)}")
             
             # Send each alert
             for alert in alerts:
                 message = alert.format_message()
-                
-                # Send to Telegram
-                success = self.telegram_client.send_message(message)
+
+                # MTM / ROI / Margin → urgent (threshold breach is time-sensitive)
+                # Quantity           → buffered (can fire repeatedly, deduplicate)
+                if any(x in alert.alert_type for x in ['mtm', 'roi', 'margin']):
+                    success = self.telegram_client.send_urgent(message)
+                else:
+                    success = self.telegram_client.send_message(message)
                 
                 if success:
                     self.alert_sent.emit(alert.alert_type, message)
-                    self.logger.info(f"Position alert sent: {alert.alert_type} for {alert.user_alias}")
+                    self.logger.debug(f"Position alert sent: {alert.alert_type} for {alert.user_alias}")
                     
                     # Play sound if enabled
                     if self.sound_enabled:

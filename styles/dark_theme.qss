@@ -275,3 +275,121 @@ QLabel#connectionStatus[connected="false"] {
     color: #f56565;
     background-color: rgba(245, 101, 101, 0.1);
 }
+
+/* Tab Widget */
+QTabWidget::pane {
+    border: 1px solid #4a5568;
+    background-color: #1a1f2e;
+    border-top: none;
+}
+
+QTabBar::tab {
+    background-color: #2a3544;
+    color: #a0aec0;
+    border: 1px solid #4a5568;
+    border-bottom: none;
+    padding: 10px 20px;
+    margin-right: 2px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+QTabBar::tab:selected {
+    background-color: #1a1f2e;
+    color: #e2e8f0;
+    border-bottom: 2px solid #4299e1;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #374151;
+    color: #cbd5e0;
+}
+
+QTabBar::tab:first {
+    margin-left: 0;
+}
+
+/* Line Edit (Text Input) */
+QLineEdit {
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border: 1px solid #4a5568;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 11px;
+}
+
+QLineEdit:hover {
+    border-color: #718096;
+}
+
+QLineEdit:focus {
+    border-color: #4299e1;
+    background-color: #374151;
+}
+
+QLineEdit:disabled {
+    background-color: #1a1f2e;
+    color: #4a5568;
+    border-color: #2d3748;
+}
+
+QLineEdit::placeholder {
+    color: #6a737d;
+}
+
+/* QSplitter - Resizable dividers */
+QSplitter::handle {
+    background-color: #4a5568;
+}
+
+QSplitter::handle:horizontal {
+    width: 4px;
+    margin: 0px 2px;
+}
+
+QSplitter::handle:vertical {
+    height: 4px;
+    margin: 2px 0px;
+}
+
+QSplitter::handle:hover {
+    background-color: #4299e1;
+}
+
+QSplitter::handle:pressed {
+    background-color: #3182ce;
+}
+
+
+
+/* ── Total P&L / ROI Ticker ───────────────────────────────────────────── */
+QWidget#tickerContainer {
+    background: transparent;
+}
+
+QFrame#tickerWidget {
+    background-color: #12151c;
+    border: 1px solid #1e3050;
+    border-radius: 7px;
+    margin: 2px 0px;
+}
+
+QLabel#tickerCaption {
+    color: #6a8aaa;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+QLabel#tickerValue {
+    font-size: 16px;
+    font-weight: bold;
+    font-family: "Courier New", monospace;
+}
+
+QLabel#tickerDivider {
+    color: #1e3050;
+    font-size: 22px;
+    font-weight: normal;
+}

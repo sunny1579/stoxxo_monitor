@@ -188,6 +188,7 @@ class MTMROIAlertsWidget(QGroupBox):
             alias_item = QTableWidgetItem(user_alias)
             alias_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             alias_item.setFlags(alias_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            alias_item.setData(32, user_alias)  # store real alias in UserRole
             self.table.setItem(row, 0, alias_item)
             
             # Get saved values for this user if they exist
@@ -227,7 +228,8 @@ class MTMROIAlertsWidget(QGroupBox):
             alias_item = self.table.item(row, 0)
             if not alias_item:
                 continue
-            user_alias = alias_item.text()
+            # Read from UserRole so it works even when text is masked as *****
+            user_alias = alias_item.data(32) or alias_item.text()
             
             # Get threshold values
             mtm_above_widget = self.table.cellWidget(row, 1)

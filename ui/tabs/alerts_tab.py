@@ -12,6 +12,29 @@ from core.telegram_client import TelegramClientSync
 import logging
 
 
+class TelegramVerifyThread(QThread):
+    """Background thread for silently verifying Telegram credentials (no test message)"""
+    result_ready = pyqtSignal(bool, str)  # success, bot_username or error
+
+    def __init__(self, bot_token, channel_id):
+        super().__init__()
+        self.bot_token = bot_token
+        self.channel_id = channel_id
+        self.logger = logging.getLogger(__name__)
+
+    def run(self):
+        try:
+            client = TelegramClientSync(self.bot_token, self.channel_id)
+            success, bot_username = client.verify_connection()
+            if success and bot_username:
+                self.result_ready.emit(True, bot_username)
+            else:
+                self.result_ready.emit(False, "Verification failed")
+        except Exception as e:
+            self.logger.error(f"Telegram verify error: {e}")
+            self.result_ready.emit(False, str(e))
+
+
 class TelegramTestThread(QThread):
     """Background thread for testing Telegram connection"""
     result_ready = pyqtSignal(bool, str)  # success, bot_username or error
@@ -42,7 +65,9 @@ class AlertsTab(QWidget):
     """
     Tab containing alert configuration and monitoring functionality
     """
-    
+
+    config_changed = pyqtSignal()  # Emitted whenever any alert config changes
+
     def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
         self.settings_manager = settings_manager
@@ -245,6 +270,29 @@ class AlertsTab(QWidget):
         self.margin_alerts.update_users(test_users)
         self.quantity_alerts.update_users(test_users)
     
+    def verify_telegram_silent(self):
+        """
+        Silently verify Telegram credentials and update the indicator.
+        Called automatically when engine starts. Does NOT send any message.
+        """
+        bot_token = self.telegram_config.get_bot_token()
+        channel_id = self.telegram_config.get_channel_id()
+
+        if not bot_token or not channel_id:
+            self.telegram_config.set_connection_status(False)
+            return
+
+        self.verify_thread = TelegramVerifyThread(bot_token, channel_id)
+        self.verify_thread.result_ready.connect(self._on_verify_result)
+        self.verify_thread.start()
+
+    def _on_verify_result(self, success, message):
+        """Handle silent verification result"""
+        if success:
+            self.telegram_config.set_connection_status(True, message)
+        else:
+            self.telegram_config.set_connection_status(False)
+
     def _on_test_telegram(self):
         """Handle test telegram button click"""
         bot_token = self.telegram_config.get_bot_token()
@@ -277,8 +325,9 @@ class AlertsTab(QWidget):
             self.telegram_config.set_connection_status(False)
     
     def _on_config_changed(self):
-        """Handle configuration changes - auto-save"""
+        """Handle configuration changes - auto-save and notify main window"""
         self._save_settings()
+        self.config_changed.emit()
     
     def _on_splitter_moved(self):
         """Handle splitter movement - save horizontal positions only"""
@@ -343,6 +392,31 @@ class AlertsTab(QWidget):
         """Get reference to quantity alerts widget"""
         return self.quantity_alerts
     
+    def set_aliases_hidden(self, hidden: bool):
+        """
+        Mask or restore user alias text in all alert tables.
+        Replaces alias text with ***** rather than hiding the column,
+        so the table layout stays intact.
+        """
+        for widget in (self.mtm_roi_alerts, self.margin_alerts, self.quantity_alerts):
+            if not hasattr(widget, 'table'):
+                continue
+            tbl = widget.table
+            for row in range(tbl.rowCount()):
+                item = tbl.item(row, 0)
+                if item is None:
+                    continue
+                if hidden:
+                    # Store real alias if not already masked
+                    if not item.data(32):   # Qt.ItemDataRole.UserRole = 32
+                        item.setData(32, item.text())
+                    item.setText('*****')
+                else:
+                    # Restore real alias from stored value
+                    real = item.data(32)
+                    if real:
+                        item.setText(real)
+
     def update_users(self, user_aliases):
         """
         Update all alert tables with current user list
